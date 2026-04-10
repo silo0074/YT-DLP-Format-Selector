@@ -1,0 +1,20 @@
+[Desktop Entry]
+Comment[en_US]=
+Comment=
+# bash -c "...": This runs a shell command string.
+# > /dev/null: This redirects the "Standard Output" (your echo lines and yt-dlp progress) to the "void."
+# 2>&1: This redirects "Standard Error" to the same place.
+Exec=konsole -e /bin/bash -c 'SCRIPT_PATH_PLACEHOLDER'
+# Exec=gnome-terminal -- /bin/bash 'SCRIPT_PATH_PLACEHOLDER'
+GenericName[en_US]=
+GenericName=
+Icon=video-display
+MimeType=
+Name[en_US]=YT-DLP Format Selector
+Name=YT-DLP Format Selector
+StartupNotify=true
+Terminal=false
+TerminalOptions=
+Type=Application
+X-KDE-SubstituteUID=false
+X-KDE-Username=
