@@ -2,12 +2,14 @@
 
 cd "$(dirname "$0")"
 
+VERSION="1.2"
+
 # Configuration - Using absolute paths based on the script location
-SKIP_CONFIRMATION=false  # Set to true to skip metadata fetching and confirmation
+SKIP_CONFIRMATION=true  # Set to true to skip metadata fetching and confirmation
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 YTP_PATH="$SCRIPT_DIR/yt-dlp_linux"
 DENO_PATH="$HOME/.deno/bin/deno"
-DOWNLOAD_DIR="/home/me/Downloads/%(uploader)s - %(upload_date>%Y-%m-%d)s - %(title)s [%(id)s]"
+DOWNLOAD_DIR="/mnt/D_TOSHIBA_S300/Active/Archive/%(uploader)s - %(upload_date>%Y-%m-%d)s - %(title)s [%(id)s]"
 FILE_NAME="%(uploader)s - %(upload_date>%Y-%m-%d)s - %(title)s [%(id)s].%(ext)s"
 
 # Function to print separators
@@ -32,10 +34,13 @@ fi
 COMMON_ARGS=(
     --format-sort "res,vcodec:vp9,br"
     --fixup detect_or_warn
-    --remux-video mkv
     --embed-metadata
     --parse-metadata "%(uploader_id)s:%(meta_uploader_id)s"
-    --postprocessor-args "VideoRemuxer+ffmpeg:-bsf:v setts=pts=DTS"
+    # When you provide --postprocessor-args "VideoRemuxer+ffmpeg:...",
+    # you are telling yt-dlp to run a specific command after the initial muxing is finished.
+    # Old Flow: Download → Mux to MKV → Run Post-Processor (Bitstream filter) → Embed Metadata.
+    # New Flow: Download → Mux to MKV + Embed Metadata (Single FFmpeg command).
+    # --postprocessor-args "VideoRemuxer+ffmpeg:-bsf:v setts=pts=DTS"
     --js-runtimes "deno:$DENO_PATH"
     --cookies-from-browser chromium
     -o "$DOWNLOAD_DIR/$FILE_NAME"
@@ -43,6 +48,9 @@ COMMON_ARGS=(
     --ignore-config
     --console-title
     --no-overwrites # Explicitly tell yt-dlp not to overwrite existing files
+    # Workaround for "The page needs to be reloaded" error
+    --extractor-args "youtube:player_client=web_safari,web_embedded,-tv_downgraded"
+    --remote-components ejs:github
 )
 
 divider
@@ -53,7 +61,7 @@ divider
 
 # 2) Error detection for format listing
 echo -e "\nFetching available formats...\n"
-if ! "$YTP_PATH" -F "$URL" --list-formats --cookies-from-browser chromium --js-runtimes "deno:$DENO_PATH"; then
+if ! "$YTP_PATH" -F "$URL" --list-formats --cookies-from-browser chromium --js-runtimes "deno:$DENO_PATH" --extractor-args "youtube:player_client=web_safari,web_embedded,-tv_downgraded"; then
     echo -e "\nERROR: Failed to retrieve formats. Please check the URL or your connection."
     divider
     read -n 1 -s -r -p "Press any key to exit..."
@@ -104,80 +112,94 @@ while true; do
     fi
 done
 
-# --- Download Confirmation Logic ---
-if [ "$SKIP_CONFIRMATION" = false ]; then
-    echo -e "\nFetching metadata for confirmation...\n"
+echo -e "\nFetching metadata...\n"
 
-    # We fetch Title, Duration, Size, Resolved IDs, and separate the Directory and Filename (no extension)
-    # Fetch metadata - rely on %(filename)s for the path
-    # RAW_META=$("$YTP_PATH" --print "%(title)s##%(duration_string)s##%(filesize,filesize_approx)s##%(format_id)s##$DOWNLOAD_DIR##$FILE_NAME##%(filename)s" -f "$SELECTED_FORMAT" "${COMMON_ARGS[@]}" "$URL")
-    RAW_META=$("$YTP_PATH" --print "%(title)s##%(duration_string)s##%(filesize,filesize_approx)s##%(format_id)s##%(filename)s" -f "$SELECTED_FORMAT" "${COMMON_ARGS[@]}" "$URL")
+# Fetch metadata including video codec to determine if media contains video
+RAW_META=$("$YTP_PATH" --print "%(title)s##%(duration_string)s##%(filesize,filesize_approx)s##%(format_id)s##%(filename)s##%(vcodec)s" -f "$SELECTED_FORMAT" "${COMMON_ARGS[@]}" "$URL")
 
-    # Split metadata using awk
-    V_TITLE=$(echo "$RAW_META" | awk -F'##' '{print $1}')
-    V_DURATION=$(echo "$RAW_META" | awk -F'##' '{print $2}')
-    V_SIZE_BYTES=$(echo "$RAW_META" | awk -F'##' '{print $3}')
-    V_RESOLVED_ID=$(echo "$RAW_META" | awk -F'##' '{print $4}')
-    V_FILENAME_RAW=$(echo "$RAW_META" | awk -F'##' '{print $5}')
+# Split metadata using awk
+V_TITLE=$(echo "$RAW_META" | awk -F'##' '{print $1}')
+V_DURATION=$(echo "$RAW_META" | awk -F'##' '{print $2}')
+V_SIZE_BYTES=$(echo "$RAW_META" | awk -F'##' '{print $3}')
+V_RESOLVED_ID=$(echo "$RAW_META" | awk -F'##' '{print $4}')
+V_FILENAME_RAW=$(echo "$RAW_META" | awk -F'##' '{print $5}')
+V_VCODEC=$(echo "$RAW_META" | awk -F'##' '{print $6}')
 
+# Determine whether this selection is audio-only or video
+IS_AUDIO_ONLY=false
+if [[ "$V_VCODEC" == "none" || -z "$V_VCODEC" ]]; then
+    IS_AUDIO_ONLY=true
+fi
+
+# Apply remux only if it contains a video stream
+REMUX_ARGS=()
+if [ "$IS_AUDIO_ONLY" = false ]; then
+    REMUX_ARGS=(--remux-video mkv)
     # Clean up the Filename (yt-dlp will replace .%(ext)s with .mkv)
     # We replace the template extension with .mkv for the existence check
     # Strip the existing extension (everything after the last dot) and force .mkv
     V_FULL_PATH="${V_FILENAME_RAW%.*}.mkv"
+else
+    REMUX_ARGS=(--extract-audio --audio-format opus)
+    V_FULL_PATH="$V_FILENAME_RAW"
+fi
 
-    # Helper variables for UI
-    V_DIR=$(dirname "$V_FULL_PATH")
-    V_NAME_ONLY=$(basename "$V_FULL_PATH" .mkv)
+# Helper variables for UI
+V_DIR=$(dirname "$V_FULL_PATH")
+V_EXT="${V_FULL_PATH##*.}"
+V_NAME_ONLY=$(basename "$V_FULL_PATH" ."$V_EXT")
 
-    # Convert bytes to MB using awk
-    if [[ "$V_SIZE_BYTES" =~ ^[0-9]+$ ]]; then
-        V_SIZE_MB=$(awk "BEGIN {printf \"%.2f\", $V_SIZE_BYTES / 1048576}")
-        DISPLAY_SIZE="${V_SIZE_MB} MB"
-    else
-        DISPLAY_SIZE="Unknown"
-    fi
+# Convert bytes to MB using awk
+if [[ "$V_SIZE_BYTES" =~ ^[0-9]+$ ]]; then
+    V_SIZE_MB=$(awk "BEGIN {printf \"%.2f\", $V_SIZE_BYTES / 1048576}")
+    DISPLAY_SIZE="${V_SIZE_MB} MB"
+else
+    DISPLAY_SIZE="Unknown"
+fi
 
+divider
+echo "PENDING DOWNLOAD:"
+echo "Title:     $V_TITLE"
+echo "Duration:  $V_DURATION"
+echo "Est. Size: $DISPLAY_SIZE"
+echo "Selected:  $V_RESOLVED_ID"
+echo "Type:      $( [ "$IS_AUDIO_ONLY" = true ] && echo "Audio Only" || echo "Video" )"
+echo "Folder:    $V_DIR"
+echo "Filename:  $(basename "$V_FULL_PATH")"
+divider
+echo ""
+
+# --- File Existence Check ---
+while [ -f "$V_FULL_PATH" ]; do
     divider
-    echo "PENDING DOWNLOAD:"
-    echo "Title:     $V_TITLE"
-    echo "Duration:  $V_DURATION"
-    echo "Est. Size: $DISPLAY_SIZE"
-    echo "Selected:  $V_RESOLVED_ID"
-    echo "Folder:    $V_DIR"
-    echo "Filename:  $V_NAME_ONLY"
-    divider
+    echo "WARNING: File already exists!"
+    echo "Path: $V_FULL_PATH"
     echo ""
+    echo "1) Skip/Cancel"
+    echo "2) Rename and Check again"
+    read -p "Select action: " file_action
 
-    # --- File Existence Check ---
-    while [ -f "$V_FULL_PATH" ]; do
-        divider
-        echo "WARNING: File already exists!"
-        echo "Path: $V_FULL_PATH"
-        echo ""
-        echo "1) Skip/Cancel"
-        echo "2) Rename and Check again"
-        read -p "Select action: " file_action
+    if [ "$file_action" == "1" ]; then
+        echo -e "\nDownload cancelled."
+        exit 0
+    elif [ "$file_action" == "2" ]; then
+        # -e allows editing, -i provides the default text
+        # We use V_NAME_ONLY so they don't have to re-type .mkv
+        read -e -i "$V_NAME_ONLY" -p "Edit filename (without .$V_EXT extension): " NEW_NAME
 
-        if [ "$file_action" == "1" ]; then
-            echo -e "\nDownload cancelled."
-            exit 0
-        elif [ "$file_action" == "2" ]; then
-            # -e allows editing, -i provides the default text
-            # We use V_NAME_ONLY so they don't have to re-type .mkv
-            read -e -i "$V_NAME_ONLY" -p "Edit filename (no extension): " NEW_NAME
+        # Update check variables
+        V_NAME_ONLY="$NEW_NAME"
+        V_FULL_PATH="$V_DIR/$NEW_NAME.$V_EXT"
+        # Update the yt-dlp argument for the final command
+        # COMMON_ARGS+=(-o "$V_FULL_PATH")
+        FINAL_OUT="$V_FULL_PATH"
+    else
+        echo "Invalid option."
+    fi
+done
 
-            # Update our check variables
-            V_NAME_ONLY="$NEW_NAME"
-            V_FULL_PATH="$V_DIR/$NEW_NAME.mkv"
-
-            # Update the yt-dlp argument for the final command
-            # COMMON_ARGS+=(-o "$V_FULL_PATH")
-            FINAL_OUT="$V_FULL_PATH"
-        else
-            echo "Invalid option."
-        fi
-    done
-
+# --- Download Confirmation ---
+if [ "$SKIP_CONFIRMATION" = false ]; then
     read -p "Proceed with download? (y/n): " confirm
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
         echo -e "\nDownload cancelled by user."
@@ -191,8 +213,8 @@ divider
 # Fallback for FINAL_OUT if no renaming happened
 FINAL_OUT="${FINAL_OUT:-$V_FULL_PATH}"
 
-# Execute the global command with the selected format
-"$YTP_PATH" -f "$SELECTED_FORMAT" "${COMMON_ARGS[@]}" -o "$FINAL_OUT" "$URL"
+# Execute the download with conditional remuxing
+"$YTP_PATH" -f "$SELECTED_FORMAT" "${COMMON_ARGS[@]}" "${REMUX_ARGS[@]}" -o "$FINAL_OUT" "$URL"
 
 echo ""
 divider
