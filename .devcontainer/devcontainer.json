@@ -9,7 +9,8 @@
       "extensions": [
         "llvm-vs-code-extensions.vscode-clangd",
         "cschlosser.doxdocgen",
-        "actboy168.tasks"
+        "actboy168.tasks",
+		"vizzletf.geminicommit"
       ]
     }
   },
@@ -17,9 +18,6 @@
     "--userns=keep-id",
     "--security-opt=label=disable",
 	"--dns=8.8.8.8",
-    "--dns=1.1.1.1",
-    "-v", "/dev/bus/usb:/dev/bus/usb:rw",
-    "-v", "/mnt/D_TOSHIBA_S300/Project_Libraries/Utils_AVR:/home/vscode/libraries/Utils_AVR:rw,z",
-    "-v", "/mnt/D_TOSHIBA_S300/Project_Libraries/UART_AVR:/home/vscode/libraries/UART_AVR:rw,z"
+    "--dns=1.1.1.1"
   ]
 }
