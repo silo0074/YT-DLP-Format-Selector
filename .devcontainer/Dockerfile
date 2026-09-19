@@ -10,10 +10,6 @@ RUN pacman -Syu --noconfirm && pacman -S --noconfirm \
     sudo \
     bash \
     ca-certificates \
-    avr-gcc \
-    avr-libc \
-    avrdude \
-    bear \
     && pacman -Scc --noconfirm
 
 # Create a non-root dev user

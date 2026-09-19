@@ -1,23 +1,13 @@
 {
-  "name": "Arch Shared Environment",
-  "image": "localhost/vspodium-dev-env:latest",
-  "remoteUser": "vscode",
-  // Disable automatic OS feature injection that defaults to apt-get
-  //"overrideFeatureInstallOption": true,
-  "customizations": {
-    "vscode": {
-      "extensions": [
-        "llvm-vs-code-extensions.vscode-clangd",
-        "cschlosser.doxdocgen",
-        "actboy168.tasks",
-		"vizzletf.geminicommit"
-      ]
-    }
-  },
-  "runArgs": [
-    "--userns=keep-id",
-    "--security-opt=label=disable",
-	"--dns=8.8.8.8",
-    "--dns=1.1.1.1"
-  ]
-}
+	"name": "Arch Shared Environment",
+	"image": "localhost/vspodium-dev-env:latest",
+	"remoteUser": "vscode",
+	"updateRemoteUserUID": false,
+	"runArgs": [
+	  "--userns=keep-id",
+	  "--security-opt=label=disable",
+	  "--dns=8.8.8.8",
+	  "--dns=1.1.1.1"
+	]
+  }
+  
