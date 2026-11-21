@@ -2,7 +2,7 @@
 
 cd "$(dirname "$0")"
 
-VERSION="1.2"
+VERSION="1.3"
 
 # Configuration - Using absolute paths based on the script location
 SKIP_CONFIRMATION=true  # Set to true to skip metadata fetching and confirmation
@@ -49,7 +49,7 @@ COMMON_ARGS=(
     --console-title
     --no-overwrites # Explicitly tell yt-dlp not to overwrite existing files
     # Workaround for "The page needs to be reloaded" error
-    --extractor-args "youtube:player_client=web_safari,web_embedded,-tv_downgraded"
+    # --extractor-args "youtube:player_client=web_safari,web_embedded,-tv_downgraded"
     --remote-components ejs:github
 )
 
@@ -61,7 +61,7 @@ divider
 
 # 2) Error detection for format listing
 echo -e "\nFetching available formats...\n"
-if ! "$YTP_PATH" -F "$URL" --list-formats --cookies-from-browser chromium --js-runtimes "deno:$DENO_PATH" --extractor-args "youtube:player_client=web_safari,web_embedded,-tv_downgraded"; then
+if ! "$YTP_PATH" -F "${COMMON_ARGS[@]}" --cookies-from-browser chromium "$URL" --list-formats; then
     echo -e "\nERROR: Failed to retrieve formats. Please check the URL or your connection."
     divider
     read -n 1 -s -r -p "Press any key to exit..."
@@ -72,17 +72,23 @@ divider
 
 while true; do
     echo ""
-    echo "1) Video + Audio (Manual Selection)"
-    echo "2) Single format (Audio only / Video only / Specific ID)"
-    echo "3) Auto-select BEST format (VP9 Preferred)"
-    echo "4) Exit"
+    echo "1) Video + Audio (Manual Selection for both Video and Audio IDs)"
+    echo "2) Video (Manual ID) + Audio (Auto-selection mode)"
+    echo "3) Single format (Audio only / Video only / Specific ID)"
+    echo "4) Auto-select BEST format (VP9 Preferred)"
+    echo "5) Exit"
     echo ""
     read -p "Select option: " option
 
     if [ "$option" == "1" ]; then
+        read -p "Select video ID (e.g. 137): " video
+        read -p "Select audio ID (e.g. 251): " audio
+        SELECTED_FORMAT="$video+$audio"
+        break
+
+    elif [ "$option" == "2" ]; then
         echo -e "\nAudio format is in auto-selection mode"
         read -p "Select video ID (e.g. 137): " video
-        # read -p "Select audio ID (e.g. 251-8): " audio
         # This tells yt-dlp: Use the video ID I typed, and find the best audio that is English
         # PREFERENCE ORDER:
         # 1. English + Opus
@@ -92,17 +98,17 @@ while true; do
         SELECTED_FORMAT="$video+bestaudio[language^=en][acodec^=opus]/$video+bestaudio[language^=en]/$video+bestaudio[acodec^=opus]/$video+bestaudio"
         break
 
-    elif [ "$option" == "2" ]; then
+    elif [ "$option" == "3" ]; then
         read -p "Select format ID: " format
         SELECTED_FORMAT="$format"
         break
 
-    elif [ "$option" == "3" ]; then
+    elif [ "$option" == "4" ]; then
         # Mode for best format with VP9 preference
         SELECTED_FORMAT="bestvideo+bestaudio[language^=en][acodec^=opus]/bestvideo+bestaudio[language^=en]/bestvideo+bestaudio[acodec^=opus]/bestvideo+bestaudio"
         break
 
-    elif [ "$option" == "4" ]; then
+    elif [ "$option" == "5" ]; then
         echo -e "\nExiting...\n"
         exit 0
 

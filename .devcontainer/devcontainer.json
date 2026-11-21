@@ -1,13 +1,31 @@
 {
-	"name": "Arch Shared Environment",
-	"image": "localhost/vspodium-dev-env:latest",
-	"remoteUser": "vscode",
-	"updateRemoteUserUID": false,
-	"runArgs": [
-	  "--userns=keep-id",
-	  "--security-opt=label=disable",
-	  "--dns=8.8.8.8",
-	  "--dns=1.1.1.1"
-	]
+    "name": "Arch Shared Environment",
+    "image": "localhost/vspodium-dev-env:latest",
+    "remoteUser": "vscode",
+    "updateRemoteUserUID": false,
+    "mounts": [
+        "source=/home/me/.ssh,target=/home/vscode/.ssh,type=bind"
+    ],
+    "customizations": {
+      "vscode": {
+        "extensions": [
+          "llvm-vs-code-extensions.vscode-clangd",
+          "cschlosser.doxdocgen",
+          "actboy168.tasks",
+          "vizzletf.geminicommit",
+          "kylinideteam.cmake-intellisence",
+          "kylinideteam.cppdebug",
+          "kylinideteam.kylin-cmake-tools",
+          "mhutchie.git-graph",
+          "streetsidesoftware.code-spell-checker"
+        ]
+      }
+    },
+    "runArgs": [
+      "--userns=keep-id",
+      "--security-opt=label=disable",
+      "--dns=8.8.8.8",
+      "--dns=1.1.1.1"
+    ]
   }
   
